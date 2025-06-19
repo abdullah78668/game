@@ -1,0 +1,602 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Neural Shutdown</title>
+    <style>
+        /* CSS Code Starts Here */
+        :root {
+            --bg-color: #0a0a1a;
+            --primary-color: #00ffcc;
+            --secondary-color: #ff0055;
+            --text-color: #e0e0e0;
+            --node-color: #1a1a3a;
+            --node-border: #3a3a5a;
+        }
+
+        body {
+            background-color: var(--bg-color);
+            color: var(--text-color);
+            font-family: 'Courier New', Courier, monospace;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            padding: 10px; /* Reduced padding for mobile */
+            margin: 0;
+            text-align: center;
+            min-height: 100vh; /* Ensure body takes full viewport height */
+            box-sizing: border-box; /* Include padding in element's total width and height */
+        }
+
+        h1 {
+            color: var(--primary-color);
+            text-shadow: 0 0 10px var(--primary-color);
+            font-size: clamp(2rem, 8vw, 3rem); /* Responsive font size */
+            margin-bottom: 20px;
+        }
+
+        #status-bar {
+            display: flex;
+            flex-wrap: wrap; /* Allow items to wrap on small screens */
+            justify-content: space-around;
+            gap: 15px; /* Slightly reduced gap for mobile */
+            width: 100%;
+            max-width: 600px;
+            background: rgba(17, 17, 17, 0.8);
+            padding: 15px;
+            border: 1px solid var(--node-border);
+            margin-bottom: 20px;
+            border-radius: 8px;
+            box-sizing: border-box;
+        }
+
+        .status-item {
+            font-size: clamp(0.9rem, 4vw, 1.2rem); /* Responsive font size */
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        #trace-bar-container {
+            width: 100px;
+            height: 20px;
+            background: #333;
+            border: 1px solid var(--primary-color);
+            display: inline-block;
+            vertical-align: middle;
+            border-radius: 3px;
+            overflow: hidden;
+        }
+
+        #trace-bar {
+            width: 0%;
+            height: 100%;
+            background-color: var(--secondary-color);
+            transition: width 0.5s ease-in-out;
+            border-radius: 3px;
+        }
+
+        #game-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(65px, 1fr)); /* Adjusted minmax for smaller screens */
+            gap: 8px; /* Slightly reduced gap */
+            width: 100%;
+            max-width: 700px;
+            padding: 15px;
+            border: 2px solid var(--node-border);
+            border-radius: 8px;
+            box-sizing: border-box;
+        }
+
+        .node {
+            aspect-ratio: 1 / 1; /* Keeps nodes square */
+            background-color: var(--node-color);
+            border: 2px solid var(--node-border);
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            cursor: pointer;
+            transition: all 0.3s ease-in-out;
+            font-size: clamp(0.7rem, 3vw, 1rem); /* Responsive font size */
+            flex-direction: column;
+            word-break: break-word;
+            padding: 5px; /* Added padding for content inside node */
+            border-radius: 5px;
+            text-align: center;
+        }
+
+        .node.locked {
+            background-color: #101020;
+            border-color: #222;
+            cursor: not-allowed;
+            opacity: 0.6; /* Slightly less opaque to distinguish */
+        }
+
+        .node.unlocked:not(.solved) {
+            border-color: var(--primary-color);
+            animation: pulse-primary 1.5s infinite;
+        }
+
+        .node.unlocked:not(.solved):hover {
+            transform: scale(1.05); /* Slight hover effect */
+            box-shadow: 0 0 20px var(--primary-color);
+        }
+
+        .node.solved {
+            background-color: #004d40;
+            border-color: #00ffcc;
+            color: #fff;
+            opacity: 1; /* Ensure solved nodes are fully visible */
+        }
+
+        .node.core {
+            background-color: #44001a;
+            border-color: var(--secondary-color);
+        }
+        
+        .node.core.unlocked:not(.solved) {
+            animation: pulse-secondary 1.5s infinite;
+        }
+        .node.core.unlocked:not(.solved):hover {
+            transform: scale(1.05); /* Slight hover effect */
+            box-shadow: 0 0 20px var(--secondary-color);
+        }
+
+        @keyframes pulse-primary {
+            0% { box-shadow: 0 0 5px var(--primary-color); }
+            50% { box-shadow: 0 0 15px var(--primary-color); }
+            100% { box-shadow: 0 0 5px var(--primary-color); }
+        }
+        
+        @keyframes pulse-secondary {
+            0% { box-shadow: 0 0 5px var(--secondary-color); }
+            50% { box-shadow: 0 0 15px var(--secondary-color); }
+            100% { box-shadow: 0 0 5px var(--secondary-color); }
+        }
+
+        /* Modal Styling (for Puzzle, Game Over, and Instructions) */
+        .hidden {
+            display: none !important;
+        }
+
+        .modal-overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0, 0, 0, 0.9); /* Slightly darker overlay */
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            z-index: 100;
+            backdrop-filter: blur(5px); /* Added blur effect */
+        }
+
+        .modal-content {
+            background: var(--bg-color);
+            padding: 25px 35px; /* Increased padding */
+            border: 2px solid var(--primary-color);
+            box-shadow: 0 0 25px var(--primary-color); /* Stronger shadow */
+            width: 90%;
+            max-width: 550px; /* Slightly increased max-width */
+            text-align: center;
+            border-radius: 12px; /* More rounded corners */
+            position: relative; /* For potential close button */
+            animation: fadeIn 0.3s ease-out; /* Fade in animation */
+            
+            /* --- IMPORTANT: Added for scrollability --- */
+            max-height: 90vh; /* Limit height to 90% of viewport height */
+            overflow-y: auto; /* Enable vertical scrolling if content overflows */
+            display: flex; /* Use flexbox for internal layout */
+            flex-direction: column; /* Stack children vertically */
+            justify-content: space-between; /* Push button to bottom if content is small */
+        }
+
+        /* Specific styles for the instructions modal content */
+        #instructions-modal .modal-content ul {
+            text-align: left; /* Align list items to left */
+            margin-bottom: 20px;
+            padding-left: 20px;
+            font-size: clamp(0.9rem, 4vw, 1.1rem);
+        }
+        #instructions-modal .modal-content ul li {
+            margin-bottom: 8px;
+        }
+
+        @keyframes fadeIn {
+            from { opacity: 0; transform: scale(0.9); }
+            to { opacity: 1; transform: scale(1); }
+        }
+
+        .modal-content h2 {
+            font-size: clamp(1.5rem, 6vw, 2.2rem);
+            margin-bottom: 15px;
+            color: var(--primary-color); /* Consistent color */
+        }
+        #game-over-content h2 {
+            color: var(--secondary-color); /* Game over title color */
+        }
+
+        .modal-content p {
+            font-size: clamp(1rem, 4.5vw, 1.3rem);
+            line-height: 1.5;
+            margin-bottom: 20px;
+        }
+
+        #puzzle-input-area input {
+            width: calc(100% - 20px); /* Full width minus padding */
+            max-width: 300px; /* Max width for input */
+            padding: 12px;
+            background: #111;
+            border: 1px solid var(--primary-color);
+            color: var(--primary-color);
+            font-size: clamp(1rem, 4.5vw, 1.2em);
+            margin-top: 20px;
+            text-align: center;
+            border-radius: 5px;
+            outline: none; /* Remove default focus outline */
+            box-shadow: 0 0 8px rgba(0,255,204,0.3); /* Subtle input shadow */
+        }
+
+        .modal-button {
+            background: transparent;
+            border: 2px solid var(--primary-color);
+            color: var(--primary-color);
+            padding: 12px 30px;
+            font-size: clamp(1rem, 4.5vw, 1.1em);
+            cursor: pointer;
+            margin-top: 30px;
+            transition: all 0.3s ease-in-out;
+            border-radius: 5px;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            flex-shrink: 0; /* Prevent button from shrinking */
+        }
+
+        .modal-button:hover {
+            background: var(--primary-color);
+            color: var(--bg-color);
+            box-shadow: 0 0 15px var(--primary-color);
+            transform: translateY(-2px); /* Slight lift on hover */
+        }
+        #game-over-modal .modal-button { /* Specific style for game over button */
+            border-color: var(--secondary-color);
+            color: var(--secondary-color);
+        }
+        #game-over-modal .modal-button:hover {
+            background: var(--secondary-color);
+            color: var(--bg-color);
+            box-shadow: 0 0 15px var(--secondary-color);
+        }
+
+        /* Smaller font for solved node checkmark */
+        .node.solved span small {
+            font-size: 0.7em;
+            display: block; /* Ensure small text takes full width */
+        }
+        .node.solved span {
+            font-size: 1.5em; /* Checkmark size */
+            line-height: 1;
+        }
+    </style>
+</head>
+<body>
+    <h1>Neural Shutdown</h1>
+    <div id="status-bar">
+        <div class="status-item">
+            <span>Trace Level:</span>
+            <div id="trace-bar-container">
+                <div id="trace-bar"></div>
+            </div>
+            <span id="trace-value">0%</span>
+        </div>
+        <div class="status-item">
+            <span>Time Left:</span>
+            <span id="timer">180</span>s
+        </div>
+    </div>
+    
+    <div id="game-grid">
+        </div>
+
+    <!-- Instructions Modal -->
+    <div id="instructions-modal" class="modal-overlay">
+        <div class="modal-content">
+            <h2>How to Play Neural Shutdown</h2>
+            <p>Your mission is to bypass the core system before time runs out or trace levels reach 100%.</p>
+            <p><strong>Game Mechanics:</strong></p>
+            <ul>
+                <li><strong>Nodes:</strong> Represent system points. Click unlocked nodes to reveal puzzles.</li>
+                <li><strong>Locked Nodes:</strong> Cannot be interacted with. Clicking them slightly increases trace.</li>
+                <li><strong>Unlocked Nodes:</strong> Pulse green. Click to solve their puzzle.</li>
+                <li><strong>Solved Nodes:</strong> Turn green with a checkmark. Solving a node unlocks its connected neighbors.</li>
+                <li><strong>Core Node:</strong> The final objective (Node 24). Solve its unique puzzle to win.</li>
+                <li><strong>Puzzles:</strong> Answer correctly to bypass the node. All answers are in English.</li>
+                <li><strong>Trace Level:</strong> Increases slightly on correct answers (5%) and significantly on incorrect answers (15%). Reaching 100% means game over.</li>
+                <li><strong>Time Limit:</strong> You have 180 seconds to complete the mission.</li>
+            </ul>
+            <p>Strategize your path to the CORE efficiently!</p>
+            <button id="start-mission-button" class="modal-button">Start Mission</button>
+        </div>
+    </div>
+
+    <div id="puzzle-modal" class="hidden modal-overlay">
+        <div id="puzzle-content" class="modal-content">
+            <h2 id="puzzle-title"></h2>
+            <p id="puzzle-description"></p>
+            <div id="puzzle-input-area">
+                </div>
+            <button id="submit-puzzle" class="modal-button">Bypass</button>
+        </div>
+    </div>
+
+    <div id="game-over-modal" class="hidden modal-overlay">
+        <div id="game-over-content" class="modal-content">
+            <h2 id="game-over-title"></h2>
+            <p id="game-over-message"></p>
+            <button onclick="location.reload()" class="modal-button">Restart Mission</button>
+        </div>
+    </div>
+
+    <script>
+        // JavaScript Code Starts Here
+        document.addEventListener('DOMContentLoaded', () => {
+            console.log('DOM content loaded. Initializing game.');
+
+            // Game State
+            let gameState = {
+                traceLevel: 0,
+                timeLeft: 180, 
+                activeNode: null,
+                timerInterval: null,
+                gameOver: false,
+                gameStarted: false // New state variable
+            };
+
+            // Node Definitions (expanded to 25 nodes for a 5x5 grid)
+            const nodes = [
+                // Row 1
+                { id: 0, status: 'unlocked', connections: [1, 5], puzzle: { type: 'logic', question: 'I am always in front of you but cannot be seen. What am I?', answer: 'future' } },
+                { id: 1, status: 'locked', connections: [0, 2, 6], puzzle: { type: 'pattern', question: '1, 2, 4, 8, ?', answer: '16' } },
+                { id: 2, status: 'locked', connections: [1, 3, 7], puzzle: { type: 'logic', question: 'What has an eye, but cannot see?', answer: 'needle' } },
+                { id: 3, status: 'locked', connections: [2, 4, 8], puzzle: { type: 'pattern', question: 'A, C, E, G, ?', answer: 'I' } },
+                { id: 4, status: 'locked', connections: [3, 9], puzzle: { type: 'logic', question: '2 + 2 * 2 = ?', answer: '6' } },
+                // Row 2
+                { id: 5, status: 'locked', connections: [0, 6, 10], puzzle: { type: 'logic', question: 'I have cities, but no houses. I have mountains, but no trees. What am I?', answer: 'map' } },
+                { id: 6, 'status': 'locked', connections: [1, 5, 7, 11], 'puzzle': { 'type': 'pattern', 'question': '101, 212, 323, ?', 'answer': '434' } },
+                { id: 7, status: 'locked', connections: [2, 6, 8, 12], puzzle: { type: 'logic', question: 'Which planet is known as the Red Planet?', answer: 'mars' } },
+                { id: 8, status: 'locked', connections: [3, 7, 9, 13], puzzle: { type: 'pattern', question: '5, 10, 15, 20, ?', answer: '25' } },
+                { id: 9, status: 'locked', connections: [4, 8, 14], puzzle: { type: 'logic', question: 'Unscramble: OOTLCS', answer: 'coltso' } },
+                // Row 3
+                { id: 10, status: 'locked', connections: [5, 11, 15], puzzle: { type: 'pattern', question: 'Z, Y, X, W, ?', answer: 'V' } },
+                { id: 11, status: 'locked', connections: [6, 10, 12, 16], puzzle: { type: 'logic', question: 'What has to be broken before you can use it?', answer: 'egg' } },
+                { id: 12, status: 'locked', connections: [7, 11, 13, 17], puzzle: { type: 'logic', question: 'What has a neck without a head?', answer: 'bottle' } },
+                { id: 13, status: 'locked', connections: [8, 12, 14, 18], puzzle: { type: 'pattern', question: '3, 9, 27, 81, ?', answer: '243' } },
+                { id: 14, status: 'locked', connections: [9, 13, 19], puzzle: { type: 'logic', question: 'What comes once in a minute, twice in a moment, but never in a thousand years?', answer: 'm' } },
+                // Row 4
+                { id: 15, status: 'locked', connections: [10, 16, 20], puzzle: { type: 'pattern', question: '1, 1, 2, 3, 5, ?', answer: '8' } },
+                { id: 16, status: 'locked', connections: [11, 15, 17, 21], puzzle: { type: 'logic', question: 'How many months have 28 days?', answer: '12' } },
+                { id: 17, status: 'locked', connections: [12, 16, 18, 22], puzzle: { type: 'pattern', question: 'O, T, T, F, F, S, ?', answer: 'S' } }, // One, Two, Three, Four, Five, Six, Seven
+                { id: 18, status: 'locked', connections: [13, 17, 19, 23], puzzle: { type: 'logic', question: 'What is always in front of you but can’t be seen?', answer: 'future' } },
+                { id: 19, status: 'locked', connections: [14, 18, 24], puzzle: { type: 'pattern', question: '4, 8, 16, 32, ?', answer: '64' } },
+                // Row 5
+                { id: 20, status: 'locked', connections: [15, 21], puzzle: { type: 'logic', question: 'What has keys but opens no locks?', answer: 'piano' } },
+                { id: 21, status: 'locked', connections: [16, 20, 22], puzzle: { type: 'pattern', question: '7, 14, 21, 28, ?', answer: '35' } },
+                { id: 22, status: 'locked', connections: [17, 21, 23], puzzle: { type: 'logic', question: 'Unscramble: GMEINI', answer: 'gemini' } },
+                { id: 23, status: 'locked', connections: [18, 22, 24], puzzle: { type: 'logic', question: 'What is full of holes but still holds water?', answer: 'sponge' } },
+                { id: 24, status: 'locked', connections: [19, 23], puzzle: { type: 'core', question: 'Final Sequence: Enter the IDs of the first three nodes you solved, separated by commas (e.g., 1,5,2)', answer: '' } }, // Core Node
+            ];
+            let solvedHistory = []; // Stores IDs of solved non-core nodes
+
+            // DOM Elements
+            const grid = document.getElementById('game-grid');
+            const traceBar = document.getElementById('trace-bar');
+            const traceValue = document.getElementById('trace-value');
+            const timerDisplay = document.getElementById('timer');
+            
+            // Modals
+            const instructionsModal = document.getElementById('instructions-modal');
+            const startMissionButton = document.getElementById('start-mission-button');
+            const puzzleModal = document.getElementById('puzzle-modal');
+            const puzzleTitle = document.getElementById('puzzle-title');
+            const puzzleDescription = document.getElementById('puzzle-description');
+            const puzzleInputArea = document.getElementById('puzzle-input-area');
+            const submitPuzzleButton = document.getElementById('submit-puzzle');
+            const gameOverModal = document.getElementById('game-over-modal');
+
+            // Functions
+            function createGrid() {
+                console.log('Creating grid...');
+                grid.innerHTML = '';
+                nodes.forEach(node => {
+                    const nodeEl = document.createElement('div');
+                    nodeEl.classList.add('node', node.status);
+                    nodeEl.dataset.id = node.id;
+                    
+                    if (node.puzzle && node.puzzle.type === 'core') {
+                        nodeEl.classList.add('core');
+                        nodeEl.innerHTML = `<span>CORE</span>`;
+                    } else {
+                        nodeEl.innerHTML = `<span>Node ${node.id}</span>`;
+                    }
+                    
+                    if (node.status === 'solved') {
+                        nodeEl.innerHTML = `<span><small>Node ${node.id}</small><br>✓</span>`;
+                    }
+                    
+                    // Add click listener
+                    nodeEl.addEventListener('click', () => onNodeClick(node.id));
+                    grid.appendChild(nodeEl);
+                });
+                console.log('Grid updated.');
+            }
+
+            function onNodeClick(id) {
+                console.log(`Node ${id} clicked.`);
+                if (gameState.gameOver || !gameState.gameStarted) { // Check if game has started
+                    console.log('Game is over or not started, click ignored.');
+                    return;
+                }
+
+                const node = nodes.find(n => n.id === id);
+                if (!node) {
+                    console.error(`Node ID ${id} not found!`);
+                    return;
+                }
+
+                if (node.status === 'locked') {
+                    console.log(`Node ${id} is locked. Increasing trace.`);
+                    updateTrace(1); // Small trace increase for clicking invalid nodes
+                    return;
+                } else if (node.status === 'solved') {
+                    console.log(`Node ${id} is already solved. Doing nothing.`);
+                    return;
+                }
+
+                // If node is unlocked and not solved
+                console.log(`Node ${id} is unlocked. Showing puzzle.`);
+                gameState.activeNode = node;
+                showPuzzle(node);
+            }
+            
+            function showPuzzle(node) {
+                console.log(`Showing puzzle for Node ${node.id}.`);
+                puzzleTitle.textContent = `Bypassing Node ${node.id}`;
+                puzzleDescription.textContent = node.puzzle.question;
+                
+                // Dynamically set the answer for the core puzzle based on history
+                if (node.puzzle.type === 'core') {
+                    node.puzzle.answer = solvedHistory.slice(0, 3).join(',');
+                    console.log(`Core node puzzle answer: ${node.puzzle.answer}`);
+                }
+
+                puzzleInputArea.innerHTML = `<input type="text" id="puzzle-input" placeholder="Enter Answer" autocomplete="off">`;
+                
+                // Ensure the modal is visible
+                puzzleModal.classList.remove('hidden');
+                console.log('Puzzle modal should now be visible.');
+
+                // Focus on the input field after a small delay to ensure it's rendered
+                setTimeout(() => {
+                    const puzzleInput = document.getElementById('puzzle-input');
+                    if (puzzleInput) {
+                        puzzleInput.focus();
+                        console.log('Focused on puzzle input.');
+                    } else {
+                        console.warn('Puzzle input element not found.');
+                    }
+                }, 100);
+            }
+            
+            submitPuzzleButton.addEventListener('click', () => {
+                const puzzleInput = document.getElementById('puzzle-input');
+                if (!puzzleInput) {
+                    console.error('Puzzle input element not found during submission!');
+                    return;
+                }
+                const input = puzzleInput.value.toLowerCase().trim();
+                const node = gameState.activeNode;
+
+                console.log(`Puzzle submitted: Node ID ${node.id}, Input: "${input}", Expected Answer: "${node.puzzle.answer.toLowerCase()}"`);
+
+                // All answers are now expected in English, so direct comparison is sufficient.
+                let isCorrect = (input === node.puzzle.answer.toLowerCase().trim());
+                
+                if (isCorrect) {
+                    // Correct Answer
+                    console.log('Correct Answer!');
+                    node.status = 'solved';
+                    if (node.puzzle.type !== 'core') { // Don't add core to history
+                        solvedHistory.push(node.id);
+                        console.log(`Solved History: ${solvedHistory}`);
+                    }
+                    
+                    // Unlock connected nodes
+                    node.connections.forEach(connId => {
+                        const connectedNode = nodes.find(n => n.id === connId);
+                        if (connectedNode && connectedNode.status === 'locked') {
+                            connectedNode.status = 'unlocked';
+                            console.log(`Node ${connectedNode.id} unlocked.`);
+                        }
+                    });
+                    updateTrace(5); // Successful bypass still adds some trace
+                    if (node.puzzle.type === 'core') {
+                        endGame(true);
+                    }
+                } else {
+                    // Wrong Answer
+                    console.log('Wrong Answer!');
+                    updateTrace(15); // High trace increase for mistakes
+                }
+
+                puzzleModal.classList.add('hidden');
+                console.log('Puzzle modal hidden.');
+                createGrid(); // Re-render grid to show new statuses
+            });
+
+            function updateTrace(amount) {
+                if (gameState.gameOver) return;
+                gameState.traceLevel += amount;
+                if (gameState.traceLevel >= 100) {
+                    gameState.traceLevel = 100;
+                    endGame(false, "Trace limit reached! System Lockdown!");
+                }
+                traceBar.style.width = `${gameState.traceLevel}%`;
+                traceValue.textContent = `${gameState.traceLevel}%`;
+                console.log(`Trace level updated: ${gameState.traceLevel}%`);
+            }
+
+            function startGame() {
+                console.log('Starting game.');
+                gameState.gameStarted = true; // Set game to started
+                instructionsModal.classList.add('hidden'); // Hide instructions
+                createGrid(); // Initialize grid
+                gameState.timerInterval = setInterval(() => {
+                    if (gameState.gameOver) {
+                        clearInterval(gameState.timerInterval);
+                        return;
+                    }
+                    gameState.timeLeft--;
+                    timerDisplay.textContent = gameState.timeLeft;
+                    if (gameState.timeLeft <= 0) {
+                        endGame(false, "Time's up! Mission failed.");
+                    }
+                }, 1000);
+            }
+
+            function endGame(isWin, message) {
+                if (gameState.gameOver) return;
+                
+                gameState.gameOver = true;
+                clearInterval(gameState.timerInterval);
+                console.log(`Game over: Win - ${isWin}, Message: ${message}`);
+
+                const title = document.getElementById('game-over-title');
+                const msg = document.getElementById('game-over-message');
+
+                if (isWin) {
+                    title.textContent = "SYSTEM BREACHED";
+                    title.style.color = 'var(--primary-color)';
+                    msg.textContent = "Core accessed. Mission successful!";
+                } else {
+                    title.textContent = "CONNECTION LOST";
+                    title.style.color = 'var(--secondary-color)';
+                    msg.textContent = message;
+                }
+                puzzleModal.classList.add('hidden'); // Hide puzzle modal if open
+                gameOverModal.classList.remove('hidden');
+            }
+
+            // Event listener for Start Mission button
+            startMissionButton.addEventListener('click', startGame);
+
+            // Initially, only the instructions modal is visible.
+            // Game grid and timer will only be active after "Start Mission" is clicked.
+            // createGrid() is now called inside startGame()
+        });
+    </script>
+</body>
+</html>
+
